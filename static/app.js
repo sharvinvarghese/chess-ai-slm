@@ -2,9 +2,10 @@
 // Manages board rendering, move interaction, chat, trash talk, and hint (H key)
 
 const FILES = 'abcdefgh';
-let currentState = null;
+let currentState   = null;
 let selectedSquare = null;
-let highlighted = [];
+let highlighted    = [];
+let lastMoveSquares = [];   // [fromSq, toSq] for last-move highlight
 
 const boardEl     = document.getElementById('board');
 const turnBadge   = document.getElementById('turnBadge');
@@ -18,7 +19,7 @@ const apiKeyInput = document.getElementById('apiKeyInput');
 const modelStatus = document.getElementById('modelStatus');
 const moveList    = document.getElementById('moveList');
 
-// ─── BOARD RENDERING ────────────────────────────────────────────────────────
+// ─── BOARD RENDERING ──────────────────────────────────────────────────────────
 
 function squareColor(fileIdx, rank) {
   return (fileIdx + rank) % 2 === 0 ? 'light' : 'dark';
@@ -38,36 +39,42 @@ function renderBoard(state) {
   for (let rank = 8; rank >= 1; rank--) {
     for (let fi = 0; fi < 8; fi++) {
       const name = FILES[fi] + rank;
-      const sq = map[name];
-      const div = document.createElement('div');
-      div.className = `square ${squareColor(fi, rank)}`;
+      const sq   = map[name];
+      const colorClass = squareColor(fi, rank);   // 'light' or 'dark'
+      const div  = document.createElement('div');
+      div.className = `square ${colorClass}`;
       div.dataset.sq = name;
 
-      if (selectedSquare === name) div.classList.add('selected');
-      if (highlighted.includes(name)) {
-        div.classList.add(sq && sq.piece ? 'capture' : 'target');
-      }
+      if (selectedSquare === name)        div.classList.add('selected');
+      if (highlighted.includes(name))     div.classList.add(sq?.piece ? 'capture' : 'target');
+      if (lastMoveSquares.includes(name)) div.classList.add('last-move');
 
-      // king in check highlight
-      if (state.check && sq && sq.piece === (state.turn === 'white' ? 'K' : 'k')) {
+      // king in check
+      if (state.check && sq?.piece === (state.turn === 'white' ? 'K' : 'k')) {
         div.classList.add('in-check');
       }
 
-      // coords
+      // rank label (left edge)
       if (fi === 0) {
         const r = document.createElement('span');
-        r.className = 'coord rank'; r.textContent = rank;
+        r.className = 'coord rank';
+        r.textContent = rank;
         div.appendChild(r);
       }
+      // file label (bottom edge)
       if (rank === 1) {
         const f = document.createElement('span');
-        f.className = 'coord file'; f.textContent = FILES[fi];
+        f.className = 'coord file';
+        f.textContent = FILES[fi];
         div.appendChild(f);
       }
 
-      if (sq && sq.unicode) {
+      // piece
+      if (sq?.unicode) {
         const p = document.createElement('span');
-        p.className = 'piece'; p.textContent = sq.unicode;
+        // add white/black class so CSS drop-shadow applies correctly
+        p.className = `piece ${sq.color || ''}`;
+        p.textContent = sq.unicode;
         div.appendChild(p);
       }
 
@@ -77,11 +84,12 @@ function renderBoard(state) {
   }
 
   // status badges
-  turnBadge.textContent = state.turn === 'white' ? 'White to move' : 'AI thinking…';
+  turnBadge.textContent = state.turn === 'white' ? '⬜ White to move' : '⬛ AI thinking…';
+  turnBadge.className   = `badge ${state.turn === 'white' ? 'badge-active' : 'badge-muted'}`;
   checkBadge.style.display = state.check ? '' : 'none';
   gameBadge.textContent = state.game_over
     ? `Game over — ${state.result || 'finished'}`
-    : (state.check ? 'Check!' : 'In progress');
+    : (state.check ? '⚠ Check' : 'In progress');
   fenBox.value = state.fen;
 
   // move list
@@ -89,19 +97,19 @@ function renderBoard(state) {
   state.san_moves.forEach((san, idx) => {
     if (idx % 2 === 0) {
       const num = document.createElement('span');
-      num.className = 'move-num';
+      num.className   = 'move-num';
       num.textContent = (idx / 2 + 1) + '.';
       moveList.appendChild(num);
     }
     const cell = document.createElement('span');
-    cell.className = 'move-san';
+    cell.className   = 'move-san';
     cell.textContent = san;
     moveList.appendChild(cell);
   });
   moveList.scrollTop = moveList.scrollHeight;
 }
 
-// ─── MOVE INTERACTION ────────────────────────────────────────────────────────
+// ─── MOVE INTERACTION ─────────────────────────────────────────────────────────
 
 function legalTargets(fromSq) {
   if (!currentState) return [];
@@ -114,46 +122,40 @@ async function onSquareClick(name, sq) {
   if (!currentState || currentState.game_over) return;
   if (currentState.turn !== 'white') return;
 
-  const isOwnPiece = sq && sq.color === 'white';
+  const isOwnPiece = sq?.color === 'white';
 
   if (!selectedSquare) {
     if (isOwnPiece) {
       selectedSquare = name;
-      highlighted = legalTargets(name);
+      highlighted    = legalTargets(name);
       renderBoard(currentState);
     }
     return;
   }
 
-  // deselect
   if (selectedSquare === name) {
     selectedSquare = null; highlighted = [];
     renderBoard(currentState);
     return;
   }
 
-  // reselect own piece
   if (isOwnPiece) {
     selectedSquare = name;
-    highlighted = legalTargets(name);
+    highlighted    = legalTargets(name);
     renderBoard(currentState);
     return;
   }
 
-  // attempt move — handle promotions by trying with queen promotion suffix first
+  // attempt move — prefer promotion to queen
   const base = selectedSquare + name;
-  let move = currentState.legal_moves.find(m => m === base)
-          || currentState.legal_moves.find(m => m.startsWith(base));
-
-  if (!move) {
-    selectedSquare = null; highlighted = [];
-    renderBoard(currentState);
-    return;
-  }
+  const move = currentState.legal_moves.find(m => m === base)
+            || currentState.legal_moves.find(m => m.startsWith(base));
 
   selectedSquare = null; highlighted = [];
 
-  const res = await fetch('/api/move', {
+  if (!move) { renderBoard(currentState); return; }
+
+  const res  = await fetch('/api/move', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ move })
@@ -161,6 +163,7 @@ async function onSquareClick(name, sq) {
   const data = await res.json();
   if (!data.ok) { addMsg('ai', data.error || 'Illegal move.'); return; }
 
+  lastMoveSquares = [selectedSquare || base.slice(0,2), name];
   addMsg('user', `You played ${data.player_san}`);
   renderBoard(data.state);
 
@@ -173,9 +176,12 @@ async function onSquareClick(name, sq) {
   fetchTrashTalk(data.state.check ? 'check' : 'move');
 
   // trigger AI move
-  const aiRes = await fetch('/api/ai-move', { method: 'POST' });
+  const aiRes  = await fetch('/api/ai-move', { method: 'POST' });
   const aiData = await aiRes.json();
   if (aiData.ok) {
+    // derive last-move squares from UCI
+    const aiUCI = aiData.ai_move || '';
+    lastMoveSquares = [aiUCI.slice(0,2), aiUCI.slice(2,4)];
     renderBoard(aiData.state);
     addMsg('ai', `I played ${aiData.ai_san}.`);
     fetchTrashTalk(aiData.state.check ? 'check' : 'move');
@@ -183,18 +189,18 @@ async function onSquareClick(name, sq) {
   }
 }
 
-// ─── CHAT ────────────────────────────────────────────────────────────────────
+// ─── CHAT ──────────────────────────────────────────────────────────────────────
 
 function addMsg(role, text) {
   const div = document.createElement('div');
-  div.className = `msg ${role}`;
+  div.className   = `msg ${role}`;
   div.textContent = text;
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 async function fetchTrashTalk(event) {
-  const res = await fetch('/api/trash-talk', {
+  const res  = await fetch('/api/trash-talk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ event })
@@ -208,7 +214,7 @@ async function sendChat() {
   if (!msg) return;
   chatInput.value = '';
   addMsg('user', msg);
-  const res = await fetch('/api/chat', {
+  const res  = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: msg })
@@ -217,7 +223,7 @@ async function sendChat() {
   addMsg('ai', data.reply || data.error || 'No reply.');
 }
 
-// ─── HINTS (H KEY) ──────────────────────────────────────────────────────────
+// ─── HINTS (H KEY) ─────────────────────────────────────────────────────────────
 
 async function requestHint() {
   if (!currentState || currentState.turn !== 'white') {
@@ -225,7 +231,7 @@ async function requestHint() {
     return;
   }
   hintBox.textContent = '⏳ Requesting hint from Gemini…';
-  const res = await fetch('/api/hint', {
+  const res  = await fetch('/api/hint', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: apiKeyInput.value.trim() })
@@ -234,7 +240,6 @@ async function requestHint() {
   hintBox.textContent = data.ok ? data.hint : (data.error || 'Hint failed.');
 }
 
-// H key shortcut
 document.addEventListener('keydown', e => {
   if (
     e.key.toLowerCase() === 'h' &&
@@ -244,35 +249,36 @@ document.addEventListener('keydown', e => {
   ) requestHint();
 });
 
-// ─── CONTROLS ────────────────────────────────────────────────────────────────
+// ─── CONTROLS ─────────────────────────────────────────────────────────────────
 
 document.getElementById('sendChatBtn').addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 document.getElementById('hintBtn').addEventListener('click', requestHint);
 document.getElementById('newGameBtn').addEventListener('click', async () => {
-  selectedSquare = null; highlighted = [];
-  const res = await fetch('/api/new-game', { method: 'POST' });
+  selectedSquare = null; highlighted = []; lastMoveSquares = [];
+  const res  = await fetch('/api/new-game', { method: 'POST' });
   const data = await res.json();
   renderBoard(data.state);
   addMsg('sys', 'New game started.');
   fetchTrashTalk('move');
 });
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
+// ─── INIT ──────────────────────────────────────────────────────────────────────
 
 async function init() {
-  const res = await fetch('/api/state');
+  const res  = await fetch('/api/state');
   const data = await res.json();
   renderBoard(data);
   addMsg('sys', 'Chess AI SLM online. Press H for a hint.');
   fetchTrashTalk('move');
 
-  // model status
+  // model status pill
   const ms = await fetch('/api/model-status');
   const md = await ms.json();
   modelStatus.textContent = md.ready
-    ? `✓ ${md.model_id} loaded`
-    : `✗ Not ready — ${md.message}`;
+    ? `✓ ${md.model_id}`
+    : `✗ ${md.message}`;
+  modelStatus.className = `status-pill ${md.ready ? 'ready' : 'error'}`;
 }
 
 init();
