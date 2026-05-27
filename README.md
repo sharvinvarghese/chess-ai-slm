@@ -1,45 +1,104 @@
-# ♟ Chess AI — SLM + LLM Hints
+# ♟ Chess AI SLM
 
-A fully-featured browser chess game with:
+A complete **Flask** chess web app built with:
 
-- **Minimax chess engine** (depth 1-4, adjustable difficulty)
-- **SLM AI opponent chat** — the AI trash-talks and comments on your moves using Gemini Flash Lite
-- **LLM Hint System** — press `H` (or any custom key) to send the current FEN to Gemini for a grandmaster-level explanation of the best move
-- **Real-time chat** — type anything and the AI responds in-character using Gemini
-- **Full chess rules** — castling, en passant, promotion, check/checkmate/stalemate detection
+- **[python-chess](https://python-chess.readthedocs.io/en/latest/core.html)** for move generation, legality, FEN, SAN history, and game-over detection
+- **[SmolLM2-135M-Instruct](https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct)** local SLM for trash talk and in-game chat
+- **[Flask](https://flask.palletsprojects.com/en/stable/quickstart/)** for routing, templates, and REST API endpoints
+- **Gemini Flash Lite** (cloud, API key required) for on-demand coaching hints via the `H` key
 
-## How to Use
+---
 
-1. Open `chess-ai-slm.html` in any browser
-2. Go to **⚙ CONFIG** tab and paste your [Gemini API key](https://aistudio.google.com)
-3. Play as **White** — click a piece then click the destination
-4. Press **H** at any time on your turn for an LLM hint
-5. Chat with the AI in the 💬 CHAT tab
+## Features
 
-## Keys
-| Key | Action |
-|-----|--------|
-| `H` | Request Gemini hint for current position |
-| Custom | Set any key in Config tab |
+| Feature | Detail |
+|---|---|
+| Chess engine | `python-chess` — fully legal move generation |
+| AI opponent | Python minimax with alpha-beta pruning (Black side) |
+| Local SLM | SmolLM2-135M-Instruct for trash talk + chat |
+| H key hint | Current FEN sent to Gemini Flash Lite for coaching |
+| New game | Reset board and state via button or API |
+| Move history | SAN notation logged in the sidebar |
+| Check / checkmate | Highlighted in UI with badges |
 
-## Architecture
+---
 
+## Project Structure
+
+```text
+chess-ai-slm/
+├── app.py                  # Flask app — routes and API
+├── game.py                 # python-chess game state + minimax AI
+├── slm.py                  # Local SLM wrapper (trash talk + chat)
+├── llm_hint.py             # Gemini hint call using current FEN
+├── requirements.txt
+├── scripts/
+│   └── download_model.py   # First-run SLM download
+├── templates/
+│   └── index.html          # Jinja2 template
+├── static/
+│   ├── app.js              # Board interaction + H key + chat
+│   └── style.css
+└── models/                 # Created by download_model.py
 ```
-Chess Engine (pure JS minimax + alpha-beta)
-    ↓
-Game State → FEN → Gemini Flash Lite API
-    ↑                      ↓
-AI Opponent Chat ←── SLM response
-    ↑
-Hint System (LLM call with FEN + prompt)
+
+---
+
+## Setup
+
+```bash
+git clone https://github.com/sharvinvarghese/chess-ai-slm
+cd chess-ai-slm
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Download local SLM (one-time, ~270 MB)
+python scripts/download_model.py
+
+# Run
+python app.py
 ```
 
-## Without API Key
-- Chess engine still plays (full minimax AI)
-- Chat uses pre-built persona responses
-- Hints fall back to engine suggestion
+Open **http://127.0.0.1:5000**
 
-## Tech
-- Vanilla JS, HTML5, CSS3 — no dependencies
-- Gemini 2.0 Flash Lite as the SLM backend
-- Minimax with alpha-beta pruning + positional tables
+---
+
+## How the H key works
+
+1. It is your turn (White).
+2. Paste your **Gemini API key** in the hint settings box (or set `GEMINI_API_KEY` env var).
+3. Press **H** anywhere on the page (not in an input).
+4. The frontend calls `/api/hint`.
+5. Flask forwards the current FEN + legal moves to Gemini Flash Lite.
+6. The coaching response appears in the hint box.
+
+---
+
+## How the local SLM works
+
+- `scripts/download_model.py` saves `SmolLM2-135M-Instruct` into `models/smollm2-135m-instruct/`.
+- `slm.py` loads it at Flask startup.
+- Every move event and chat message goes through the SLM for a context-aware response.
+- If the model is not downloaded, built-in fallback lines are used — the app still works fully.
+
+---
+
+## API Endpoints
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/state` | Current board state (FEN, legal moves, SAN history) |
+| POST | `/api/move` | Submit a player move (UCI format) |
+| POST | `/api/ai-move` | Trigger AI move for Black |
+| POST | `/api/chat` | Send a message to the SLM |
+| POST | `/api/trash-talk` | Request event-based trash talk |
+| POST | `/api/hint` | Get Gemini hint for current position |
+| POST | `/api/new-game` | Reset the board |
+| GET | `/api/model-status` | Check if local SLM is loaded |
+
+---
+
+## Contributing
+
+Found a bug or want to add Stockfish support, a stronger evaluator, or streaming chat? Open an issue and raise a PR.

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess AI SLM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="Chess AI SLM logo">
+        <rect width="28" height="28" rx="7" fill="#65c3ff"/>
+        <text x="5" y="21" font-size="18" font-family="serif" fill="#081018">&#9818;</text>
+      </svg>
+      <span class="brand-name">Chess<span class="accent">AI</span></span>
+      <span class="brand-sub">Flask &middot; python-chess &middot; SLM</span>
+    </div>
+    <div class="top-actions">
+      <button id="newGameBtn">&#8635; New Game</button>
+      <button id="hintBtn" class="hint-btn" title="Press H for hint">&#128161; Hint <kbd>H</kbd></button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- BOARD -->
+    <section class="board-panel">
+      <div class="status-row">
+        <span id="turnBadge" class="badge">White to move</span>
+        <span id="checkBadge" class="badge badge-check" style="display:none">&#9888; CHECK</span>
+        <span id="gameBadge" class="badge badge-muted">In progress</span>
+      </div>
+      <div id="board" class="board"></div>
+      <div class="fen-row">
+        <span class="fen-label">FEN</span>
+        <input id="fenBox" readonly />
+      </div>
+    </section>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+      <!-- CHAT -->
+      <section class="card">
+        <h2>&#128172; Chat &amp; Trash Talk</h2>
+        <div id="chatLog" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" placeholder="Talk to the AI rival…" />
+          <button id="sendChatBtn">Send</button>
+        </div>
+      </section>
+
+      <!-- HINT -->
+      <section class="card">
+        <h2>&#128161; Hint (press H)</h2>
+        <label class="field-label" for="apiKeyInput">Gemini API Key</label>
+        <input id="apiKeyInput" type="password" placeholder="AIzaSy… (for H hints)" />
+        <p class="hint-tip">Press <kbd>H</kbd> on your turn to get an LLM-powered hint with the current board state.</p>
+        <div id="hintBox" class="hint-box">Hint output appears here after you press H.</div>
+      </section>
+
+      <!-- MODEL STATUS -->
+      <section class="card">
+        <h2>&#129302; SLM Status</h2>
+        <div id="modelStatus" class="status-pill">Checking local model…</div>
+        <p class="hint-tip">Run <code>python scripts/download_model.py</code> to download SmolLM2-135M-Instruct for local trash talk.</p>
+      </section>
+
+      <!-- MOVES -->
+      <section class="card">
+        <h2>&#128203; Move History</h2>
+        <div id="moveList" class="move-list"></div>
+      </section>
+
+    </aside>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
