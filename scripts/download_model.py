@@ -1,6 +1,9 @@
 """
 First-run model download script.
-Downloads HuggingFaceTB/SmolLM2-135M-Instruct into models/smollm2-135m-instruct/.
+Downloads only .safetensors + config files (~280 MB) from
+HuggingFaceTB/SmolLM2-135M-Instruct into models/smollm2-135m-instruct/.
+
+Skips the legacy pytorch_model.bin to avoid downloading 270 MB twice.
 
 Usage:
     python scripts/download_model.py
@@ -14,11 +17,15 @@ TARGET.parent.mkdir(parents=True, exist_ok=True)
 
 print(f'Downloading {MODEL_ID}')
 print(f'Target directory: {TARGET}')
-print('This is a ~270 MB download on first run...')
+print('Skipping legacy .bin weights — only safetensors (~280 MB total)...')
 
 snapshot_download(
     repo_id=MODEL_ID,
     local_dir=str(TARGET),
-    local_dir_use_symlinks=False,
+    # skip legacy pytorch .bin files (same weights, just an older format)
+    ignore_patterns=['*.bin', '*.bin.index.json', 'flax_model*', 'tf_model*'],
 )
-print('Download complete. You can now run: python app.py')
+
+print('\nDownload complete!')
+print(f'Model saved to: {TARGET}')
+print('You can now run: python app.py')

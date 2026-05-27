@@ -32,7 +32,10 @@
         <span id="checkBadge" class="badge badge-check" style="display:none">&#9888; CHECK</span>
         <span id="gameBadge" class="badge badge-muted">In progress</span>
       </div>
-      <div id="board" class="board"></div>
+      <!-- board-wrap enforces 1:1 so empty squares never compress -->
+      <div class="board-wrap">
+        <div id="board" class="board"></div>
+      </div>
       <div class="fen-row">
         <span class="fen-label">FEN</span>
         <input id="fenBox" readonly />
