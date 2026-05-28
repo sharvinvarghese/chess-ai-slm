@@ -9,7 +9,7 @@ Persona: Rex
   Tone: Magnus Carlsen meets a stand-up comedian who studies too much chess.
   Never toxic. Never rambling. Always lands the line.
 
-Model selection (edit MODEL_ID + local_path below):
+Model selection — edit ONE line only:
   ┌─────────────────────────────────────┬──────────┬────────────┬──────────────────────────────┐
   │ Model                               │ Disk     │ Speed      │ Quality                      │
   ├─────────────────────────────────────┼──────────┼────────────┼──────────────────────────────┤
@@ -20,17 +20,20 @@ Model selection (edit MODEL_ID + local_path below):
 
   To swap:
     1. Change MODEL_ID to e.g. 'HuggingFaceTB/SmolLM2-360M-Instruct'
-    2. Change LOCAL_FOLDER to e.g. 'smollm2-360m-instruct'
-    3. Re-run: python scripts/download_model.py
-    4. Restart: python app.py
+       LOCAL_FOLDER is derived automatically — no second change needed.
+    2. Re-run: python scripts/download_model.py
+    3. Restart: python app.py
 """
 import random
 from pathlib import Path
 
-# ── MODEL SELECTION ─────────────────────────────────────────────────────────
-# Change both values together. See the table in the docstring above.
-MODEL_ID     = 'HuggingFaceTB/SmolLM2-135M-Instruct'
-LOCAL_FOLDER = 'smollm2-135m-instruct'
+# ── MODEL SELECTION — edit this ONE line ────────────────────────────────────
+MODEL_ID = 'HuggingFaceTB/SmolLM2-135M-Instruct'
+
+# LOCAL_FOLDER is derived automatically from MODEL_ID.
+# e.g. 'HuggingFaceTB/SmolLM2-360M-Instruct' → 'smollm2-360m-instruct'
+# Override only if you need a custom folder name.
+LOCAL_FOLDER = MODEL_ID.split('/')[-1].lower()
 # ────────────────────────────────────────────────────────────────────────────
 
 
@@ -128,10 +131,6 @@ def _pick(category: str) -> str:
 
 
 # ── SYSTEM PROMPTS ───────────────────────────────────────────────────────────
-# Tightly constrained for SmolLM2 family.
-# The persona blends humility (acknowledges good moves) with arrogance
-# (never doubts the outcome). Non-repeating humour via context injection.
-
 _SYSTEM_TRASH = """You are Rex, a chess rival with a very specific personality:
 - HUMBLE: you genuinely acknowledge good moves and admit when you're impressed
 - ARROGANT: you are absolutely certain you will win regardless
@@ -191,18 +190,15 @@ class TrashTalkSLM:
             'message':    'Loaded and ready' if self.is_ready() else (self.last_error or 'Not ready'),
         }
 
-    # ------------------------------------------------------------------
     def _fallback(self, event: str = 'move') -> str:
         return _pick(event)
 
     def _clean(self, raw: str) -> str | None:
         """Extract first usable sentence from model output."""
-        # remove common artifacts
         for noise in ['<|im_end|>', '<|endoftext|>', 'assistant\n', 'Rex:']:
             raw = raw.replace(noise, '')
         for line in raw.split('\n'):
             line = line.strip().strip('"').strip("'")
-            # accept lines that look like a complete thought
             if 8 < len(line) < 180 and not line.lower().startswith(('fen:', 'position:', 'last move', 'recent')):
                 return line
         return None
@@ -220,7 +216,6 @@ class TrashTalkSLM:
             )
             inputs = self.tokenizer(text, return_tensors='pt')
             input_len = inputs['input_ids'].shape[1]
-
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
@@ -237,10 +232,8 @@ class TrashTalkSLM:
             self.last_error = str(exc)
             return None
 
-    # ------------------------------------------------------------------
     def generate_trash_talk(self, event: str, fen: str, move_stack: list, side_to_move: str) -> str:
         last_moves = move_stack[-4:]
-        # inject the last fallback used so the model knows to avoid it
         avoid_hint = _LAST_USED.get(event, '')
         user_prompt = (
             f'Event: {event}. '
