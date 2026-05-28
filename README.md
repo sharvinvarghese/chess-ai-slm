@@ -1,32 +1,78 @@
 # ♟ Chess AI SLM
 
-A complete **Flask** chess web app built with:
+> Play chess against a minimax engine while a local SLM trash-talks you in character — no cloud required (except optional Gemini hints).
 
-- **[python-chess](https://python-chess.readthedocs.io/en/latest/core.html)** for move generation, legality, FEN, SAN history, and game-over detection
-- **Local SLM** (SmolLM2 family) for trash talk and in-game chat as **Rex** — a chess rival who is simultaneously humble and arrogant
-- **[Flask](https://flask.palletsprojects.com/en/stable/quickstart/)** for routing, templates, and REST API endpoints
-- **Gemini Flash Lite** (cloud, API key required) for on-demand coaching hints via the `H` key
+![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-3.x-black?style=flat-square&logo=flask)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+
+---
+
+## What is this?
+
+A **fully local chess web app** with three independent layers:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Browser (Flask)                     │
+├───────────────┬─────────────────┬───────────────────────┤
+│  Chess Engine │   Personality   │      LLM Hints        │
+│  python-chess │   SmolLM2 (SLM) │  Gemini Flash Lite    │
+│  + minimax    │   Rex persona   │  (optional, H key)    │
+│  100% local   │   100% local    │  cloud, key required  │
+└───────────────┴─────────────────┴───────────────────────┘
+```
+
+| Layer | Responsibility | Cloud? |
+|---|---|---|
+| **python-chess + minimax** | Legal moves, AI opponent (Black), check/mate | ❌ Never |
+| **SmolLM2 SLM** | Rex's trash talk + chat replies | ❌ Never |
+| **Gemini Flash Lite** | On-demand coaching hints (`H` key) | ✅ Optional |
+
+> The SLM does **not** play chess. It only drives the personality layer. The minimax engine always plays Black.
 
 ---
 
 ## Features
 
-| Feature | Detail |
-|---|---|
-| Chess engine | `python-chess` — fully legal move generation |
-| AI opponent | Python minimax with alpha-beta pruning (Black side) |
-| Local SLM | SmolLM2 family for trash talk + chat as Rex |
-| Rex persona | Humble-arrogant, dry wit, non-repeating humour |
-| H key hint | Current FEN sent to Gemini Flash Lite for coaching |
-| New game | Reset board and state via button or API |
-| Move history | SAN notation logged in the sidebar |
-| Check / checkmate | Highlighted in UI with badges |
+- ♟ **Full chess rules** — legal move highlighting, check/checkmate detection, SAN history
+- 🤖 **Minimax AI** with alpha-beta pruning — a real opponent, not random moves
+- 💬 **Rex** — an SLM-powered rival with a humble-arrogant personality and 50+ non-repeating quips
+- 💡 **Press `H`** on your turn for a Gemini-powered coaching hint on the current position
+- 🎨 **Dark theme UI** — chess.com-style board colours, last-move highlights, green selection
+- 🔄 **New game** resets everything without a page reload
+
+---
+
+## Architecture
+
+```
+Browser click
+    │
+    ▼
+Flask /api/move          ← validates UCI move via python-chess
+    │
+    ├─► game.py          ← updates board state, returns FEN + SAN
+    │
+    ├─► slm.py           ← generates Rex trash talk for the event
+    │        │
+    │        └─► SmolLM2 (local) or fallback line bank
+    │
+    └─► /api/ai-move     ← minimax picks Black's reply
+
+Press H
+    │
+    ▼
+Flask /api/hint
+    │
+    └─► llm_hint.py      ← FEN + legal moves → Gemini Flash Lite → coaching text
+```
 
 ---
 
 ## Choosing Your Local Model
 
-You can swap the local SLM based on your RAM, disk space, and patience. Edit **two lines** in `slm.py`:
+Edit **two constants** at the top of `slm.py` — nothing else needs changing.
 
 ```python
 # slm.py — top of file
@@ -34,72 +80,81 @@ MODEL_ID     = 'HuggingFaceTB/SmolLM2-135M-Instruct'  # ← change this
 LOCAL_FOLDER = 'smollm2-135m-instruct'                 # ← and this
 ```
 
-| Model | Disk | Speed (CPU) | Instruction quality | Recommended for |
+| Model | Disk | Speed (CPU) | Quality | Best for |
 |---|---|---|---|---|
-| `SmolLM2-135M-Instruct` | ~280 MB | ~1200 tok/s | Weak — mostly uses fallbacks | Low-RAM machines, testing |
-| `SmolLM2-360M-Instruct` ✅ | ~720 MB | ~600 tok/s | Noticeably better coherence | **Most users — best balance** |
-| `SmolLM2-1.7B-Instruct` | ~3.4 GB | ~150 tok/s | Good conversation quality | 16 GB+ RAM, dedicated machine |
+| `SmolLM2-135M-Instruct` | ~280 MB | ~1200 tok/s | Weak — falls back to curated lines | Low-RAM / quick testing |
+| `SmolLM2-360M-Instruct` ✅ | ~720 MB | ~600 tok/s | Noticeably better coherence | **Most users — recommended** |
+| `SmolLM2-1.7B-Instruct` | ~3.4 GB | ~150 tok/s | Good conversation quality | 16 GB+ RAM |
 
-### How to swap
+> **Fallback guarantee** — if the model isn't downloaded or produces garbage output, Rex automatically uses the hand-crafted line bank. The experience never breaks.
+
+### Swap steps
 
 ```bash
-# 1. Edit slm.py — update MODEL_ID and LOCAL_FOLDER to your chosen model
+# 1. Edit slm.py — update MODEL_ID and LOCAL_FOLDER
 
-# 2. Delete old model and re-download
+# 2. Re-download
 python scripts/download_model.py
 
-# 3. Restart the server
+# 3. Restart
 python app.py
 ```
 
-Example values for each model:
+**Copy-paste values:**
 
 ```python
-# 360M (recommended)
+# 360M — recommended
 MODEL_ID     = 'HuggingFaceTB/SmolLM2-360M-Instruct'
 LOCAL_FOLDER = 'smollm2-360m-instruct'
 
-# 1.7B (best quality)
+# 1.7B — best quality
 MODEL_ID     = 'HuggingFaceTB/SmolLM2-1.7B-Instruct'
 LOCAL_FOLDER = 'smollm2-1.7b-instruct'
 ```
 
-> **Note:** The fallback line bank in `slm.py` always works regardless of model. If the model is not downloaded or produces bad output, Rex will use the hand-crafted fallbacks automatically.
-
 ---
 
-## Rex — the Chat Persona
+## Rex — the AI Rival
 
-Rex is your chess rival. His personality:
-- **Humble when genuinely impressed** — he acknowledges good moves sincerely
-- **Arrogant about outcomes** — he is absolutely certain he will win regardless
-- **Dry, non-repeating humour** — the bot tracks the last line used per category and avoids repeating it
-- **Never toxic** — no personal attacks, just chess confidence
+Rex is not your assistant. He's your opponent with opinions.
 
-Example Rex lines:
-> *"Solid move. Genuinely. Now watch me dismantle it anyway."*
-> *"Your pawn structure has the aesthetic of a Tuesday morning."*
-> *"I admit defeat. I also reserve the right to rematch immediately."*
+| Trait | What it looks like |
+|---|---|
+| **Humble** | Genuinely acknowledges good moves |
+| **Arrogant** | Absolutely certain he will win regardless |
+| **Dry humour** | One-liners, not rambling |
+| **Non-repeating** | Tracks last used line per event category, never fires the same quip twice in a row |
+| **Never toxic** | Chess confidence only — no personal attacks |
+
+**Example lines:**
+
+```
+"Solid move. Genuinely. Now watch me dismantle it anyway."
+"Your pawn structure has the aesthetic of a Tuesday morning."
+"I admit defeat. I also reserve the right to rematch immediately."
+"You took material. I'm taking the initiative. Fair trade?"
+"One of us has a plan. The other has pieces in random squares."
+```
 
 ---
 
 ## Project Structure
 
-```text
+```
 chess-ai-slm/
-├── app.py                  # Flask app — routes and API
-├── game.py                 # python-chess game state + minimax AI
-├── slm.py                  # Local SLM wrapper (Rex persona)
-├── llm_hint.py             # Gemini hint call using current FEN
+├── app.py                  # Flask app — routes and REST API
+├── game.py                 # python-chess board + minimax AI (Black)
+├── slm.py                  # SmolLM2 wrapper — Rex persona + fallback bank
+├── llm_hint.py             # Gemini Flash Lite hint call
 ├── requirements.txt
 ├── scripts/
-│   └── download_model.py   # First-run SLM download
+│   └── download_model.py   # One-time model download
 ├── templates/
-│   └── index.html          # Jinja2 template
+│   └── index.html          # Jinja2 UI template
 ├── static/
-│   ├── app.js              # Board interaction + H key + chat
-│   └── style.css
-└── models/                 # Created by download_model.py
+│   ├── app.js              # Board interaction, H key, chat
+│   └── style.css           # Dark theme, chess.com-style board
+└── models/                 # Auto-created by download_model.py
 ```
 
 ---
@@ -109,15 +164,16 @@ chess-ai-slm/
 ```bash
 git clone https://github.com/sharvinvarghese/chess-ai-slm
 cd chess-ai-slm
+
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 
-# Download local SLM (one-time)
-# Default is 135M (~280 MB). Edit slm.py first if you want 360M or 1.7B.
+# One-time model download
+# Default: 135M (~280 MB). Edit slm.py first to pick a different size.
 python scripts/download_model.py
 
-# Run
 python app.py
 ```
 
@@ -125,32 +181,42 @@ Open **http://127.0.0.1:5000**
 
 ---
 
-## How the H key works
+## Using Hints (H key)
 
-1. It is your turn (White).
-2. Paste your **Gemini API key** in the hint settings box (or set `GEMINI_API_KEY` env var).
-3. Press **H** anywhere on the page (not in an input).
-4. The frontend calls `/api/hint`.
-5. Flask forwards the current FEN + legal moves to Gemini Flash Lite.
-6. The coaching response appears in the hint box.
+1. It must be **your turn** (White).
+2. Paste a [Gemini API key](https://aistudio.google.com/app/apikey) into the hint box, **or** set the env var:
+   ```bash
+   export GEMINI_API_KEY=your_key_here
+   ```
+3. Press **`H`** anywhere on the page (not while typing in a field).
+4. The current FEN + legal moves are sent to **Gemini Flash Lite**.
+5. Coaching text appears in the hint panel.
 
 ---
 
-## API Endpoints
+## API Reference
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/state` | Current board state (FEN, legal moves, SAN history) |
-| POST | `/api/move` | Submit a player move (UCI format) |
-| POST | `/api/ai-move` | Trigger AI move for Black |
-| POST | `/api/chat` | Send a message to Rex (SLM) |
-| POST | `/api/trash-talk` | Request event-based trash talk from Rex |
-| POST | `/api/hint` | Get Gemini hint for current position |
-| POST | `/api/new-game` | Reset the board |
-| GET | `/api/model-status` | Check if local SLM is loaded |
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/state` | Board state — FEN, legal moves, SAN history, check/mate flags |
+| `POST` | `/api/move` | Submit player move (UCI format, e.g. `e2e4`) |
+| `POST` | `/api/ai-move` | Trigger minimax move for Black |
+| `POST` | `/api/chat` | Send message to Rex, get SLM reply |
+| `POST` | `/api/trash-talk` | Request event-based Rex quip (`move`, `check`, `capture`, `win`, `loss`) |
+| `POST` | `/api/hint` | Get Gemini coaching hint for current position |
+| `POST` | `/api/new-game` | Reset board |
+| `GET` | `/api/model-status` | Check if local SLM is loaded and ready |
 
 ---
 
 ## Contributing
 
-Found a bug or want to add Stockfish support, a stronger evaluator, or streaming chat? Open an issue and raise a PR.
+PRs welcome. Good areas to contribute:
+
+- **Stockfish integration** — swap minimax for `chess.engine.SimpleEngine`
+- **Streaming chat** — Server-Sent Events for Rex's replies
+- **Stronger evaluation** — piece-square tables, mobility scoring
+- **Board themes** — additional colour schemes
+- **Opening book** — ECO-based first moves for the AI
+
+Open an issue first for anything larger than a bugfix.
